@@ -6,10 +6,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication
-public class AutoDeploymentTestingApplication {
+public class ProductAppApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(AutoDeploymentTestingApplication.class, args);
+		SpringApplication.run(ProductAppApplication.class, args);
 	}
 
     @Bean
