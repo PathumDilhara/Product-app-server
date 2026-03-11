@@ -1,27 +1,74 @@
 services:
-  db:
+  app:
+    #build: .
+    image: product_app_user1
+    container_name: product_app_user1_app   # Unique container name to create app container
+    environment:
+      # tells to Spring Boot where the database is, db is the service name of Postgres container in Docker Compose
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/app_db
+      #  username your app uses to log in to Postgres, Must match the POSTGRES_USER defined in the db service
+      SPRING_DATASOURCE_USERNAME: postgres
+      # The password for the database user , Must match POSTGRES_PASSWORD in the db service
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      db:
+        condition: service_healthy   # Wait for DB to be ready
+    restart: always # automatically restart if the container stops
+    # Traefik-specific configuration labels for your product_app container. They tell Traefik how to
+    # route HTTP requests to your app
+    labels:
+      - "traefik.enable=true"    # Enables Traefik for this container
+      # Defines a routing rule for Traefik
+      # if an HTTP request comes to product-app.local, send it to this container
+      # product-app.local is the host you use in your browser or in /etc/hosts mapping to your server IP
+      - "traefik.http.routers.product-app.rule=Host(`product-app.local`)"
+      - "traefik.http.routers.product-app.entrypoints=web"
+      - "traefik.http.services.product-app.loadbalancer.server.port=8080"
+      - "traefik.http.routers.product-app.middlewares=fix-product-app-host"
+      - "traefik.http.middlewares.fix-product-app-host.headers.customrequestheaders.Host=product-app.local"
+    networks:
+      - product_app_user1_internal #  unique network name for docker network that contain app + db
+      - traefik_public   # Traefik docker network contaitn traefik + all apps
+
+  db:   # defines a service called db (label) we access this service above
     image: postgres:15
-    container_name: postgredb
+    container_name: product_app_user1_db   # name to create docker db container from image postgres:15
+    # Creating initial username,password, if access db from outside the container use these
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: auto_deploy_db
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: app_db
+    # Service-level mount - “Mount this volume inside the container at /var/lib/postgresql/data”
+    # “Mount a volume called pgdata inside this container at /var/lib/postgresql/data"
+    # /var/lib/postgresql/data is where Postgres stores its database files
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      -  product_app_user1_pgdata:/var/lib/postgresql/data   #  mount the volume inside container
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]  # checks if Postgres is ready
+      interval: 5s       # check every 5 seconds
+      timeout: 5s        # consider a single check failed after 5 seconds
+      retries: 5         # fail only after 5 consecutive failures
+    networks:
+      - product_app_user1_internal   # Internal network only; no ports exposed to host
 
-  app:
-    build: .
-    container_name: product_app
-    ports:
-      - "8080:8080"
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/auto_deploy_db
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
-    depends_on:
-      - db
-
+# Top-level declaration - "buying a hard drive (pgdata)"
+# Volumes for persisting database data
+# declares the volume so Docker knows it exists
 volumes:
-  pgdata:
+  product_app_user1_pgdata:   # declare the volume
+    external: true
+
+# Top level network declaration
+networks:
+  traefik_public:
+    external: true
+  # Docker creates a private virtual network where > Containers can communicate with each other, isolated from other networks unless connected, exists only on that Docker host
+  # Technically you don't have to specify it because Docker Compose will default to bridge
+  product_app_user1_internal:
+    external: true
+
+
+
+# DEPLOYMENT_ID is an environment variable you provide at deployment time
+# export DEPLOYMENT_ID=product_app_user1_20260308_01
+# docker-compose up -d
